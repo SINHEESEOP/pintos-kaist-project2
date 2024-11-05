@@ -17,10 +17,10 @@
 #error TIMER_FREQ <= 1000 recommended
 #endif
 
-/* Number of timer ticks since OS booted. */
+/* ticks: OS가 부팅된 이후의 타이머 틱 수를 저장 */
 static int64_t ticks;
 
-/* Number of loops per timer tick.
+/* 한 타이머 틱 동안 수행할 수 있는 루프의 수를 저장한다.
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
 
@@ -33,7 +33,7 @@ static void real_time_sleep (int64_t num, int32_t denom);
    interrupt PIT_FREQ times per second, and registers the
    corresponding interrupt. */
 void
-timer_init (void) {
+timer_init (void) { // 8254 Programmable Interval Timer초기화, 타이머 인터럽트를 등록
 	/* 8254 input frequency divided by TIMER_FREQ, rounded to
 	   nearest. */
 	uint16_t count = (1193180 + TIMER_FREQ / 2) / TIMER_FREQ;
@@ -45,7 +45,7 @@ timer_init (void) {
 	intr_register_ext (0x20, timer_interrupt, "8254 Timer");
 }
 
-/* Calibrates loops_per_tick, used to implement brief delays. */
+/* 타이머의 정확성을 보장하기 위해 loops_per_tick을 계산하는 함수 */
 void
 timer_calibrate (void) {
 	unsigned high_bit, test_bit;
@@ -70,7 +70,7 @@ timer_calibrate (void) {
 	printf ("%'"PRIu64" loops/s.\n", (uint64_t) loops_per_tick * TIMER_FREQ);
 }
 
-/* Returns the number of timer ticks since the OS booted. */
+/* OS 부팅 이후의 총 타이머 틱 수를 반환한다. */
 int64_t
 timer_ticks (void) {
 	enum intr_level old_level = intr_disable ();
@@ -80,24 +80,35 @@ timer_ticks (void) {
 	return t;
 }
 
-/* Returns the number of timer ticks elapsed since THEN, which
-   should be a value once returned by timer_ticks(). */
+/* 주어진 시간 이후 경과된 타이머 틱 수를 계산한다. */
 int64_t
 timer_elapsed (int64_t then) {
 	return timer_ticks () - then;
 }
 
-/* Suspends execution for approximately TICKS timer ticks. */
+/* 주어진 타이머 틱 수만큼 스레드를 잠재우는 함수
+* 현재 스레드의 시작 시간을 기록하고, 주어진 시간이 지날 때까지 thread_yeild를 호출하여
+* 다른 스레드가 CPU를 사용할 수 있도록 한다.
+* 수정할 부분이다. 현재는 busy-wait 방식을 사용하니, 이를 sleep방식으로 변경할 것.
+*/
 void
 timer_sleep (int64_t ticks) {
+	
 	int64_t start = timer_ticks ();
-
+	/*
 	ASSERT (intr_get_level () == INTR_ON);
-	while (timer_elapsed (start) < ticks)
-		thread_yield ();
+	project1-Alarm Clock
+	while (timer_elapsed (start) < ticks) // timer_elapsed: start로부터 몇 tick이 지났는 지
+		thread_yield (); // cpu 양보하고 ready_list에 삽입	
+		*/
+	thread_sleep(start + ticks);
+
 }
 
-/* Suspends execution for approximately MS milliseconds. */
+/* 더 높은 정확도의 시간 지연을 제공한다.
+* 입력으로 초 단위의 num과 denom을 받아서, 타이머 틱 수로 변환한 후 timer_sleep을 호출한다.
+* 만약 지연 시간이 짧아 1틱 보다 작다면, busy_wait 방식을 사용한다.
+*/
 void
 timer_msleep (int64_t ms) {
 	real_time_sleep (ms, 1000);
@@ -126,6 +137,13 @@ static void
 timer_interrupt (struct intr_frame *args UNUSED) {
 	ticks++;
 	thread_tick ();
+
+	/* project1-Alarm Clock */
+	if (get_next_tick_to_awake() <= ticks)
+	{
+		thread_awake(ticks);
+	}
+
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
@@ -135,7 +153,7 @@ too_many_loops (unsigned loops) {
 	/* Wait for a timer tick. */
 	int64_t start = ticks;
 	while (ticks == start)
-		barrier ();
+		barrier ();   // 정확한 순서 보장
 
 	/* Run LOOPS loops. */
 	start = ticks;
