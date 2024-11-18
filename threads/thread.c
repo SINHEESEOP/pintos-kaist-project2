@@ -25,7 +25,13 @@
    Do not modify this value. */
 #define THREAD_BASIC 0xd42df210
 
+<<<<<<< HEAD
+/* project1-Alarm Clock */
+static struct list sleep_list;
+static int64_t next_tick_to_awake;
+=======
 static struct list all_list;
+>>>>>>> 8c6adf58e92bb23eecfc736b3dd38811bdbaa84a
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
@@ -106,6 +112,8 @@ void
 thread_init (void) {
 	ASSERT (intr_get_level () == INTR_OFF);
 
+	// project1. sleep_list 등 thread오 관련된 자료 구조들 초기화하는 코드 추가
+
 	/* Reload the temporal gdt for the kernel
 	 * This gdt does not include the user context.
 	 * The kernel will rebuild the gdt with user context, in gdt_init (). */
@@ -121,6 +129,7 @@ thread_init (void) {
 	list_init (&ready_list);
 	list_init (&sleep_list);
 	list_init (&destruction_req);
+	list_init (&sleep_list); /* project1-Alarm Clock */
 
 	/* Set up a thread structure for the running thread. */
 	initial_thread = running_thread ();
@@ -132,6 +141,26 @@ thread_init (void) {
 /* Starts preemptive thread scheduling by enabling interrupts.
    Also creates the idle thread. */
 void
+<<<<<<< HEAD
+thread_start (void) 
+{
+  /* Create the idle thread. */
+  struct semaphore idle_started;
+  sema_init (&idle_started, 0);
+  thread_create ("idle", PRI_MIN, idle, &idle_started);
+
+  /* 선점형 스케줄링 활성화 
+  * 실행 중인 스레드가 시간을 초과했을 때, 다른 스레드로 전환
+  */
+  intr_enable ();
+
+  /* idle 스레드의 초기화 대기
+  * sema_init에서 초기값을 0으로 설정했기 때문에, idle 스레드가
+  * sema_up을 호출할 때까지 대기한다. 
+  */
+  sema_down (&idle_started);
+}
+=======
 thread_start (void) {
 	/* Create the idle thread. */
 	struct semaphore idle_started;
@@ -142,9 +171,13 @@ thread_start (void) {
 
 	/* Start preemptive thread scheduling. */
 	intr_enable ();
+>>>>>>> 8c6adf58e92bb23eecfc736b3dd38811bdbaa84a
 
-	/* Wait for the idle thread to initialize idle_thread. */
-	sema_down (&idle_started);
+/* Prints thread statistics. */
+void
+thread_print_stats (void) {
+	printf ("Thread: %lld idle ticks, %lld kernel ticks, %lld user ticks\n",
+			idle_ticks, kernel_ticks, user_ticks);
 }
 
 /* Called by the timer interrupt handler at each timer tick.
@@ -168,11 +201,29 @@ thread_tick (void) {
 		intr_yield_on_return ();
 }
 
-/* Prints thread statistics. */
-void
-thread_print_stats (void) {
-	printf ("Thread: %lld idle ticks, %lld kernel ticks, %lld user ticks\n",
-			idle_ticks, kernel_ticks, user_ticks);
+/** project1-Alarm Clock */
+void 
+thread_sleep (int64_t ticks) 
+{
+    struct thread *this;
+    this = thread_current();
+
+    if (this == idle_thread) // idle -> stop
+	{  
+        ASSERT(0);
+    } else 
+	{
+        enum intr_level old_level;
+        old_level = intr_disable();  // pause interrupt
+
+        update_next_tick_to_awake(this->wakeup_tick = ticks);  // update awake ticks
+
+        list_push_back(&sleep_list, &this->elem);  // push to sleep_list
+
+        thread_block();  // block this thread
+
+        intr_set_level(old_level);  // continue interrupt
+    }
 }
 
 /* Creates a new kernel thread named NAME with the given initial
@@ -312,16 +363,69 @@ thread_exit (void) {
    may be scheduled again immediately at the scheduler's whim. */
 void
 thread_yield (void) {
-	struct thread *curr = thread_current ();
+	struct thread *curr = thread_current (); // 현재 포인터를 가리킴
 	enum intr_level old_level;
 
 	ASSERT (!intr_context ());
 
+<<<<<<< HEAD
+	old_level = intr_disable (); // 인터럽트 비활성화
+	if (curr != idle_thread) 
+		list_push_back (&ready_list, &curr->elem); // 레디리스트.append(현재)
+	do_schedule (THREAD_READY); // 쓰래드 상태 레디로 변경
+	intr_set_level (old_level); // 인터럽트 상태 복원
+	/*
+	ready_list: 리소스를 할당받을 스래드들 대기 
+	sleep_list: Blocked 상태인 스레드 리스트 
+	 */
+}
+/** project1-Alarm Clock */
+void 
+thread_awake (int64_t wakeup_tick) 
+{
+    next_tick_to_awake = INT64_MAX;
+
+    struct list_elem *sleeping;
+    sleeping = list_begin(&sleep_list);  // take sleeping thread
+
+    while (sleeping != list_end(&sleep_list)) {  // for all sleeping threads
+        struct thread *th = list_entry(sleeping, struct thread, elem);
+
+        if (wakeup_tick >= th->wakeup_tick) 
+		{
+            sleeping = list_remove(&th->elem);  // delete thread
+            thread_unblock(th);                 // unblock thread
+        } 
+		else 
+		{
+            sleeping = list_next(sleeping);              // move to next sleeping thread
+            update_next_tick_to_awake(th->wakeup_tick);  // update wakeup_tick
+        }
+    }
+}
+/* project1-Alarm Clock */
+void
+update_next_tick_to_awake (int64_t ticks)
+{
+	// find smallest tick
+	// 대기 중인 스레드들 중 가장 빠릴 깨어나야 할 시각을 관리
+	// 가장 작은 tick 값을 유지하는 이유는 시스템이 효율적으로 꺠어날 시간을 추적. 
+	// 필요한 시점에만 알람을 발생시켜 불필요한 CPU 사용을 줄인다. 
+	next_tick_to_awake = (next_tick_to_awake > ticks) ? ticks : next_tick_to_awake;
+}
+
+/* project1-Alarm Clock */
+int64_t
+get_next_tick_to_awake(void)
+{
+	return next_tick_to_awake;
+=======
 	old_level = intr_disable ();
 	if (curr != idle_thread)
 		list_insert_ordered (&ready_list, &curr->elem, greater_priority_thread, NULL);
 	do_schedule (THREAD_READY);
 	intr_set_level (old_level);
+>>>>>>> 8c6adf58e92bb23eecfc736b3dd38811bdbaa84a
 }
 
 /* Sets the current thread's priority to NEW_PRIORITY. */
@@ -586,13 +690,18 @@ do_schedule(int status) {
 
 static void
 schedule (void) {
+<<<<<<< HEAD
+	struct thread *curr = running_thread ();      // 현재 실행중인 포인터
+	struct thread *next = next_thread_to_run ();  // ready queue에서 실행될 스레드를 리턴
+=======
 
 	struct thread *curr = running_thread ();
 	struct thread *next = next_thread_to_run ();
+>>>>>>> 8c6adf58e92bb23eecfc736b3dd38811bdbaa84a
 
-	ASSERT (intr_get_level () == INTR_OFF);
-	ASSERT (curr->status != THREAD_RUNNING);
-	ASSERT (is_thread (next));
+	ASSERT (intr_get_level () == INTR_OFF);  // 스케줄링 도중에는 인터럽트가 발생하면 안됨. INTR_OFF인지 확인
+	ASSERT (curr->status != THREAD_RUNNING); // CPU 소유권을 넘겨주기 전에 running 스레드는 그 상태를 running외의 다른 상태로 바꿔주는 작업이 되어 있어야함
+	ASSERT (is_thread (next)); // next_thread_to_run() 에 의해 올바른 thread가 return 되었는 지 확인
 	/* Mark us as running. */
 	next->status = THREAD_RUNNING;
 

@@ -98,14 +98,6 @@ struct thread {
 	char name[16];                      /* Name (for debugging purposes). */
 	int priority;                       /* Priority. */
 
-	int64_t awake_ticks;					/* 깨어날 시간 */
-
-	int init_priority;
-	struct lock *lock_for_waiting;
-	struct list donations;
-	struct list_elem donation_elem;
-
-
 	/* Shared between thread.c and synch.c. */
 	struct list_elem elem;              /* List element. */
 	struct list_elem all_elem;			/* All List element */
@@ -131,6 +123,14 @@ struct thread {
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
+
+/* project1-Alarm Clock */
+void thread_sleep (int64_t ticks);
+void thread_awake (int64_t ticks);
+void update_next_tick_to_awake (int64_t ticks);
+int64_t get_next_tick_to_awake (void);
+// struct thread *thread_get_idle_thread(void);
+
 
 void thread_init (void);
 void thread_start (void);
@@ -160,20 +160,5 @@ int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
 void do_iret (struct intr_frame *tf);
-
-void thread_sleep(int64_t awake_ticks);
-void thread_awake(int64_t current_ticks);
-
-bool greater_priority_thread(const struct list_elem *a, const struct list_elem *b, void *aux);
-bool greater_priority_thread_donation(const struct list_elem *a, const struct list_elem *b, void *aux);
-void preemption(void);
-
-void mlfqs_calculate_priority (struct thread *t);
-void mlfqs_calculate_recent_cpu (struct thread *t);
-void mlfqs_calculate_load_avg (void);
-
-void mlfqs_increment_recent_cpu (void);
-void mlfqs_recalculate_recent_cpu (void);
-void mlfqs_recalculate_priority (void);
 
 #endif /* threads/thread.h */
